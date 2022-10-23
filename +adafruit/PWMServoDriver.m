@@ -2,13 +2,22 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
 % PWMServoDriver Create an Adafruit PWM Servo Driver device object.
 
     properties(Access = private, Constant = true)
-        CREATE_SERVO_DRIVER = hex2dec('00')
-        DELETE_SERVO_DRIVER = hex2dec('01')
-        SET_PWM             = hex2dec('02')
-        SET_PWM_FREQ        = hex2dec('03')
-        SLEEP               = hex2dec('04')
-        WAKEUP              = hex2dec('05')
-        RESET               = hex2dec('06')
+        CREATE_SERVO_DRIVER         = hex2dec('00')
+        DELETE_SERVO_DRIVER         = hex2dec('01')
+        BEGIN                       = hex2dec('02')
+        RESET                       = hex2dec('03')
+        SLEEP                       = hex2dec('04')
+        WAKEUP                      = hex2dec('05')
+        SET_EXT_CLOCK               = hex2dec('06')
+        SET_PWM_FREQ                = hex2dec('07')
+        SET_OUTPUT_MODE             = hex2dec('08')
+        GET_PWM                     = hex2dec('09')
+        SET_PWM                     = hex2dec('0A')
+        SET_PIN                     = hex2dec('0B')
+        READ_PRESCALE               = hex2dec('0C')
+        WRITE_MICROSECONDS          = hex2dec('0D')
+        SET_OSCILLATOR_FREQUENCY    = hex2dec('0E')
+        GET_OSCILLATOR_FREQUENCY    = hex2dec('0F')
     end
     properties(GetAccess = public, SetAccess = protected)
         SCLPin
@@ -16,7 +25,6 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
     end
     properties(SetAccess = immutable)
         I2CAddress
-        PWMFrequency
     end
     properties(Access = private)
         Bus
@@ -41,7 +49,7 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
     %% Constructor
     methods(Hidden, Access = public)
         function obj = PWMServoDriver(parentObj, varargin)
-            narginchk(1,5);
+            narginchk(1,3);
             obj.Parent = parentObj;
             
             if ismember(obj.Parent.Board, {'Uno', 'Leonardo'})
@@ -60,7 +68,6 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
             try
                 p = inputParser;
                 addParameter(p, 'I2CAddress', hex2dec('40'));
-                addParameter(p, 'PWMFrequency', 60);
                 parse(p, varargin{:});
             catch e
                 message = e.message;
@@ -100,10 +107,6 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
             i2cAddresses = [i2cAddresses address];
             setSharedResourceProperty(parentObj, obj.ResourceOwner, 'i2cAddresses', i2cAddresses);
             obj.I2CAddress = address;
-            
-            frequency = matlabshared.hwsdk.internal.validateDoubleParameterRanged('PWM frequency', p.Results.PWMFrequency, 0, 2^15-1, 'Hz');
-            obj.PWMFrequency = frequency;
-            
                       
             configureI2C(obj);
             
@@ -150,18 +153,22 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
     
     %% Public methods
     methods (Access = public)
-        function setPWM(obj, num, on, off)
-            commandID = obj.SET_PWM;
-            data_on = typecast(uint16(on), 'uint8');
-            data_off = typecast(uint16(off), 'uint8');
-            data = [num, data_on, data_off];
+
+        function begin(obj, prescale)
+            % Argument validation
+            arguments
+                obj
+                prescale (1,1) uint8 = 0
+            end
+
+            commandID = obj.BEGIN;
+            data = prescale;
             sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
 
-        function setPWMFreq(obj, freq)
-            commandID = obj.SET_PWM_FREQ;
-            data_freq = typecast(uint16(freq), 'uint8');
-            data = data_freq;
+        function reset(obj)
+            commandID = obj.RESET;
+            data = [];
             sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
 
@@ -176,27 +183,140 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
             data = [];
             sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
+        
+        function setExtClk(obj, prescale)
+            % Argument validation
+            arguments 
+                obj
+                prescale (1,1)   uint8
+            end
 
-        function reset(obj)
-            commandID = obj.RESET;
-            data = [];
+            commandID = obj.SET_EXT_CLOCK;
+            data = prescale;
             sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
+
+        function setPWMFreq(obj, freq)
+            % Argument validation
+            arguments 
+                obj
+                freq (1,1) uint16
+            end
+
+            commandID = obj.SET_PWM_FREQ;
+            dataFreq = typecast(freq, 'uint8');
+            data = dataFreq;
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+
+        function setOutputMode(obj, totempole)
+            % Argument validation
+            arguments 
+                obj
+                totempole (1,1)  uint8
+            end
+
+            commandID = obj.SET_OUTPUT_MODE;
+            data = totempole;
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+
+        function pwm = getPWM(obj, num)
+            % Argument validation
+            arguments 
+                obj
+                num (1,1)   uint8
+            end
+
+            commandID = obj.GET_PWM;
+            data = num;
+            pwm = sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+
+        function pwm = setPWM(obj, num, on, off)
+            % Argument validation
+            arguments 
+                obj
+                num (1,1)   uint8
+                on  (1,1)   uint16
+                off (1,1)   uint16
+            end
+
+            commandID = obj.SET_PWM;
+            data_on = typecast(uint16(on), 'uint8');
+            data_off = typecast(uint16(off), 'uint8');
+            data = [num, data_on, data_off];
+            pwm = sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+
+        function setPin(obj, num, val, invert)
+            % Argument validation
+            arguments
+                obj
+                num (1,1) uint8
+                val (1,1) uint16
+                invert (1,1) uint8 = false
+            end
+
+            commandID = obj.SET_PIN;
+            dataVal = typecast(uint16(val), 'uint8');
+            data = [num dataVal invert];
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+        
+        function prescale = readPrescale(obj)
+            commandID = obj.READ_PRESCALE;
+            data = [];
+            prescale = sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+        
+        function writeMicroseconds(obj, num, microseconds)
+            % Argument validation
+            arguments 
+                obj
+                num (1,1)   uint8
+                microseconds (1,1) uint16
+            end
+
+            commandID = obj.WRITE_MICROSECONDS;
+            dataMicroseconds = typecast(uint16(microseconds), 'uint8');
+            data = [num dataMicroseconds];
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+        
+        function setOscillatorFrequency(obj, freq)
+            % Argument validation
+            arguments 
+                obj
+                freq (1,1)   uint32
+            end
+
+            commandID = obj.SET_OSCILLATOR_FREQUENCY;
+            dataFreq = typecast(uint32(freq), 'uint8');
+            data = dataFreq;
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
+        end
+        
+        function freq = getOscillatorFrequency(obj)
+            commandID = obj.GET_OSCILLATOR_FREQUENCY;
+            data = [];
+            freq = swapbytes(typecast(uint8(sendCommandCustom(obj, obj.LibraryName, commandID, data')), 'uint32'));
+        end
+
     end
 
     %% Private methods
     methods (Access = private)
         function createServoDriver(obj)        
             commandID = obj.CREATE_SERVO_DRIVER;
-            frequency = typecast(uint16(obj.PWMFrequency), 'uint8');
-            data = [uint8(obj.I2CAddress), frequency];
+            data = uint8(obj.I2CAddress);
             sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
         
         function deleteServoDriver(obj)
             commandID = obj.DELETE_SERVO_DRIVER;
-            params = [];
-            sendCommandCustom(obj, obj.LibraryName, commandID, params);
+            data = [];
+            sendCommandCustom(obj, obj.LibraryName, commandID, data');
         end
 
     end
@@ -311,7 +431,6 @@ classdef PWMServoDriver < matlabshared.addon.LibraryBase & matlab.mixin.CustomDi
             fprintf('          SCLPin: ''%s''\n', obj.SCLPin);
             fprintf('          SDAPin: ''%s''\n', obj.SDAPin);
             fprintf('      I2CAddress: %-1d (''0x%02s'')\n', obj.I2CAddress, dec2hex(obj.I2CAddress));
-            fprintf('    PWMFrequency: %.2d (Hz)\n', obj.PWMFrequency);
             fprintf('\n');
                   
             footer = getFooter(obj);
